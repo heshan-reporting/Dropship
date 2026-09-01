@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 
 const config: NextConfig = {
+  // Required at runtime by the dev-only database fallback, never bundled.
+  serverExternalPackages: ['@electric-sql/pglite'],
   images: {
     // Product imagery is served from supplier CDNs, which vary by source.
     remotePatterns: [{ protocol: 'https', hostname: '**' }],

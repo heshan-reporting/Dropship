@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Adventure Dog Sherpa Blanket">
+  <rect width="600" height="600" fill="#e7eef2"/>
+  <g fill="#2c4a5e" stroke="#2c4a5e" stroke-linejoin="round" stroke-linecap="round"><path d="M180 250 q120 -35 240 0 v250 q-120 35 -240 0 Z" /><path d="M180 330 q120 -35 240 0 M180 410 q120 -35 240 0" fill="none" stroke-width="10" stroke="#e7eef2" /></g>
+  <circle cx="300" cy="600" r="150" fill="#2c4a5e" opacity="0.06"/>
+</svg>

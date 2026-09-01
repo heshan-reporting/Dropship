@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Personalised Pet Portrait Sweatshirt">
+  <rect width="600" height="600" fill="#efe7f2"/>
+  <g fill="#6b4c8a" stroke="#6b4c8a" stroke-linejoin="round" stroke-linecap="round"><path d="M300 245 L365 215 Q405 205 405 250 L425 335 L372 355 L372 555 L228 555 L228 355 L175 335 L195 250 Q195 205 235 215 Z" /><circle cx="300" cy="410" r="46" fill="#efe7f2" /></g>
+  <circle cx="300" cy="600" r="150" fill="#6b4c8a" opacity="0.06"/>
+</svg>

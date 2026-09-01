@@ -18,10 +18,10 @@
     "test:watch": "vitest",
     "search": "tsx --env-file-if-exists=.env src/engine/cli.ts",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "seed": "tsx --env-file-if-exists=.env scripts/seed.ts"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.18",
@@ -34,6 +34,7 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "drizzle-orm": "^0.45.2",
     "next": "^15.5.25",
     "postgres": "^3.4.9",

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Good Boy Heavyweight Hoodie">
+  <rect width="600" height="600" fill="#d8cec0"/>
+  <g fill="#2f2a26" stroke="#2f2a26" stroke-linejoin="round" stroke-linecap="round"><path d="M300 250 L360 215 Q400 200 400 250 L420 340 L370 360 L370 560 L230 560 L230 360 L180 340 L200 250 Q200 200 240 215 Z" /><path d="M270 215 Q300 265 330 215" fill="none" stroke-width="9" /></g>
+  <circle cx="300" cy="600" r="150" fill="#2f2a26" opacity="0.06"/>
+</svg>

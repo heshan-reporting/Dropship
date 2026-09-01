@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SCORING, rankProducts, scoreProduct } from '../src/scoring/score.js';
-import { computeEconomics, retailForTargetMargin } from '../src/scoring/economics.js';
-import { screenPolicy, worstSeverity } from '../src/scoring/policy.js';
-import { money, toDecimal } from '../src/core/normalize.js';
-import type { NormalizedProduct, ProductSignals } from '../src/core/types.js';
+import { DEFAULT_SCORING, rankProducts, scoreProduct } from '../src/engine/scoring/score.js';
+import { computeEconomics, retailForTargetMargin } from '../src/engine/scoring/economics.js';
+import { screenPolicy, worstSeverity } from '../src/engine/scoring/policy.js';
+import { money, toDecimal } from '../src/engine/core/normalize.js';
+import type { NormalizedProduct, ProductSignals } from '../src/engine/core/types.js';
 
 function product(
   price: number,

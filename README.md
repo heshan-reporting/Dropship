@@ -1,221 +1,184 @@
-# Dropship
+# Muttward
 
-A product sourcing engine for dropshipping: query several marketplaces at once,
-collapse the results into one product schema, and rank them on the criteria that
-actually predict a winner.
-
-## Design
-
-The engine is built around one idea — **every source is an adapter, and every
-adapter emits the same shape**. A source can be a first-class API or a scraper
-standing in for one; nothing downstream can tell the difference.
+A dropshipping platform: find products worth selling, list them, sell them, and
+route the orders to a supplier. One codebase, two surfaces — a private admin for
+running the business and a public storefront for buying from it.
 
 ```
-                    ┌─────────────────────────────┐
-   search(term) ──► │        Orchestrator         │
-                    │  fan out across marketplaces │
-                    └──────────────┬──────────────┘
-                                   │
-        ┌──────────────────────────┼──────────────────────────┐
-        ▼                          ▼                          ▼
-   marketplace: cj          marketplace: aliexpress    marketplace: printify
-        │                          │                          │
-   ┌────▼────┐               ┌─────▼─────┐              ┌─────▼─────┐
-   │ cj-api  │               │ ae-api    │  API first   │ printify  │
-   └─────────┘               ├───────────┤              └───────────┘
-                             │ ae-scrape │  ◄── fallback
-                             └───────────┘
-        │                          │                          │
-        └──────────────────────────┼──────────────────────────┘
-                                   ▼
-                        NormalizedProduct[]  → dedupe → rank
+  RESEARCH                LISTINGS              STOREFRONT           FULFILMENT
+  ────────                ────────              ──────────           ──────────
+  sourcing engine   →   publish + price   →   cart + Stripe    →   Printify (auto)
+  scores products       against real           hosted checkout      manual queue
+  on unit economics     break-even                                  (everything else)
+                                                     │
+                                                     ▼
+                                            webhook → order → dispatch
 ```
 
-Within a marketplace, adapters form a **chain**: APIs before scrapers,
-configured before unconfigured. The orchestrator walks the chain and stops at
-the first success. A dead API falls through to the scraper instead of losing the
-source; a dead marketplace never fails the whole search.
+## The stack
 
-### Why API-first
+TypeScript end to end, so `NormalizedProduct` is a single contract from the
+supplier API through to the order line. Next.js 15 (App Router) on Vercel,
+Postgres via Drizzle, Stripe-hosted checkout.
 
-Scraping is the fallback, not the mechanism, because selector-based scrapers rot.
-They key off generated class names (`lh_kt`, `tp-offer-product-new`) that change
-on every frontend deploy, and you find out when your product feed silently
-returns nothing.
-
-Where scraping is unavoidable, `ScrapeAdapter` reads the **JSON state embedded
-in the page** — the same payload the marketplace's own frontend hydrates from —
-and treats CSS selectors as a last resort. Those object keys have outlived
-several frontend rewrites; the class names have not.
-
-## Sources
-
-| Adapter | Kind | Cost | Gives you |
-|---|---|---|---|
-| `cj-api` | API | Free | MOQ, warehouses, sales volume, fulfilment |
-| `aliexpress-api` | API | Free (approval needed) | Ratings, order counts, affiliate commission |
-| `printify-api` | API | Free | POD catalogue, domestic fulfilment, no inventory risk |
-| `aliexpress-scrape` | Scrape | Paid per request | Fallback only, when the API is down or unapproved |
-
-Every source is optional. Adapters without credentials report
-`isConfigured() === false` and are skipped, so the engine runs on whatever
-subset you have signed up for.
+**Card details never touch this application.** Checkout redirects to Stripe, so
+PCI scope, 3-D Secure and fraud handling stay on their side. What is kept here
+are session and payment-intent references.
 
 ## Setup
 
 ```bash
 npm install
-cp .env.example .env   # add at least one credential
+cp .env.example .env      # fill in DATABASE_URL and ADMIN_PASSWORD at minimum
+npm run db:push           # create the tables
+npm run dev
 ```
 
-Start with **Printify** or **CJ** — both are free and instant. AliExpress
-Open Platform needs app approval, which takes a few days.
+`DATABASE_URL` takes any Postgres URL — [Neon](https://neon.tech) and Supabase
+both have free tiers that work with Vercel out of the box.
 
-## Use
+The admin area refuses to open until `ADMIN_PASSWORD` is set. That is deliberate:
+an unset password must never mean an open admin.
+
+### Taking real payments
 
 ```bash
-npm run search -- "collapsible dog bowl"
-npm run search -- "phone stand" --limit 10 --marketplace cj --verbose
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 
-`--verbose` shows the adapter chain resolving and the per-factor score breakdown.
+Put the printed signing secret in `STRIPE_WEBHOOK_SECRET`. In production, add the
+endpoint at `https://your-domain/api/webhooks/stripe` in the Stripe dashboard.
 
-```ts
-import { createEngine, rankProducts } from './src/index.js';
+The webhook is the only place an order becomes paid — the browser's return from
+checkout is a redirect the customer controls, so it is treated as cosmetic.
 
-const engine = createEngine();
-const result = await engine.search({ term: 'collapsible dog bowl', limit: 20 });
+## How it fits together
 
-for (const p of rankProducts(result.products)) {
-  console.log(p.score.total, p.title, p.url);
-}
+### Sourcing engine (`src/engine`)
 
-// Partial failure is normal and surfaced, never thrown:
-result.errors;          // which sources failed, and whether a fallback covered it
-result.sourcesSkipped;  // which lacked credentials
-```
+Queries several marketplaces in parallel. Within each marketplace, adapters form
+a chain ordered API-first, scrape-second, and the orchestrator stops at the first
+success — so a failing or unapproved API falls through to a scraper rather than
+losing the source.
 
-## Scoring
-
-The engine scores one question: **would selling this make money?**
-
-The obvious approach — cheap product, high rating, lots of sales — reliably ranks
-money-losers first. A $4.20 dog bowl at a 3x markup yields about $4 of gross
-margin and costs roughly $13 to advertise. It looks like a winner on every
-surface metric and loses $8 an order.
-
-So unit economics carry the most weight, and things that make a product
-unsellable act as vetoes rather than a few points off.
-
-| Factor | Weight | Judged on |
+| Adapter | Kind | Cost |
 |---|---|---|
-| Economics | 35% | Contribution margin per order, after freight, fees, refunds and estimated CAC |
-| Demand | 20% | Units sold, log-scaled — early traction counts most |
-| Competition | 15% | How many distinct suppliers carry the same item |
-| Quality | 15% | Rating, shrunk toward a prior when review counts are thin |
-| Logistics | 10% | Delivery days and shipping weight |
-| Supplier | 5% | Verified badge, years trading |
+| `printify-api` | API | Free, instant |
+| `cj-api` | API | Free, instant |
+| `aliexpress-api` | API | Free, needs approval |
+| `aliexpress-scrape` | Scrape | Paid per request, fallback only |
 
-### Blockers cap, they do not subtract
+Scraping reads the JSON state embedded in the page rather than CSS selectors,
+because generated class names rotate on every frontend deploy.
 
-"Cannot be advertised on Meta" is not worth ten points off — it disqualifies the
-product. Blockers therefore impose a ceiling on the total, so a fat margin cannot
-hide one:
+### Scoring (`src/engine/scoring`)
 
+Scores one question: **would selling this make money?** A $4.20 product at 3×
+markup yields ~$4 of gross margin and costs ~$13 to advertise — it looks like a
+winner on every surface metric and loses money on every order. So unit economics
+carry the most weight, and anything that makes a product unsellable is a veto
+rather than a few points off.
+
+| Factor | Weight |
+|---|---|
+| Economics — contribution per order after freight, fees, refunds, CAC | 35% |
+| Demand — units sold, log-scaled | 20% |
+| Competition — how many suppliers carry the same item | 15% |
+| Quality — rating, shrunk toward a prior on thin review counts | 15% |
+| Logistics — delivery days and weight | 10% |
+| Supplier — verified, years trading | 5% |
+
+Blockers cap the total rather than being averaged in, so a product with excellent
+margins that cannot be advertised ranks last instead of first.
+
+> **`AdCostModel` is a model, not a measurement.** It defaults to industry rules
+> of thumb for cold paid social. Replace them with your real CPA in
+> `src/engine/scoring/economics.ts` the moment you have campaign data — every
+> score depends on it.
+
+### Fulfilment (`src/lib/fulfilment`)
+
+Same adapter shape as the engine, for the same reason: the order pipeline should
+not know which supplier ships a line item.
+
+- **Printify** — placed automatically. Order creation and send-to-production are
+  separate calls, because production is the irreversible step that spends money.
+- **Manual** — anything else. The order is recorded and queued for a human to
+  place, then paste tracking back. Not a stub: a CJ or AliExpress product
+  genuinely has to be bought by hand, and pretending otherwise would mean
+  accepting orders the system cannot ship.
+
+A provider failing never fails the webhook — the customer has already paid, so
+the error lands on the fulfilment row where the admin queue can retry it.
+
+## Money handling
+
+Every amount is an integer in minor units with an ISO currency code. No floats
+touch a price, anywhere, from supplier API to order line.
+
+Three rules the code holds to:
+
+1. **The browser never sets a price.** The cart holds listing ids and quantities;
+   every price is re-read from the database at checkout.
+2. **Prices freeze before payment.** The order is written before the Stripe
+   redirect. Re-pricing on the webhook would record a figure Stripe never
+   charged.
+3. **Payment is recognised exactly once.** The webhook is idempotent — Stripe
+   retries on any non-2xx, and a replay must not place a second supplier order.
+
+All three are covered by tests.
+
+## Tests
+
+```bash
+npm test        # 57 tests
+npm run typecheck
 ```
-  25 (capped from 95)  Rechargeable Vape Pen Kit
-       $42.00 → $126.00 retail · CAC $39.72 → +$32.79/order
-       ✗ Cannot be advertised on Meta or TikTok (matched "vape")
-```
 
-Best margins in the set, ranked last. Current blockers: negative contribution,
-delivery beyond 21 days, and prohibited ad categories.
+| Suite | Covers |
+|---|---|
+| `normalize` | Money arithmetic in minor units, price parsing, cross-source dedupe |
+| `score` | Unit economics, policy vetoes, saturation, rating shrinkage |
+| `search` | Adapter chain ordering and every orchestrator branch |
+| `orders` | The full order pipeline against a real Postgres |
 
-### Where the numbers come from
-
-- **Unit economics** (`scoring/economics.ts`) — retail anchors on *product* cost,
-  then freight, payment fees, a refund allowance and estimated CAC are subtracted.
-  Retail deliberately does not track freight: the market prices a blanket on what
-  a blanket is worth, and marking up landed cost would hide the exact margin
-  problem heavy items cause. Unprofitable products report the retail price that
-  would fix them.
-- **CAC is a model, not a measurement.** `AdCostModel` defaults to industry rules
-  of thumb for cold paid social. Replace them with your real numbers the moment
-  you have campaign data — every score downstream depends on this.
-- **Competition falls out of the merge.** When `dedupe` finds the same item from
-  four suppliers, that is four competitors, and it is free data. Duplicates are
-  counted rather than discarded, and the survivor is priced at the cheapest
-  supplier found.
-- **Ratings are shrunk toward a prior.** 4.9★ from three reviews should not
-  outrank 4.6★ from twelve hundred; a Bayesian adjustment pulls thin counts back.
-- **Confidence is reported separately.** A 70 built on six known factors is a
-  different claim from a 70 built on two. `score.confidence` says which you have.
-
-Deliberately not an LLM call: every number above can be inspected, tuned, and
-argued with, costs nothing, and returns the same answer twice. Judgements a model
-genuinely makes better — creative angle, market saturation beyond supplier count,
-brand risk — belong in a layer on top of this, not in place of it.
-
-## Adding a source
-
-Implement `SourceAdapter`, map to `NormalizedProduct`, register it. Set
-`marketplace` to an existing value to slot into that marketplace's fallback
-chain, or a new one to add a lane.
-
-```ts
-class MySourceAdapter implements SourceAdapter {
-  readonly id = 'mysource-api';
-  readonly marketplace = 'temu';
-  readonly kind = 'api';
-  isConfigured() { return Boolean(this.token); }
-  async search(query, ctx) { /* → NormalizedProduct[] */ }
-}
-```
-
-For a scraper, extend `ScrapeAdapter` and implement `searchUrl` and `parse` —
-the Bright Data fetch, caching, and the "extracted 0 products" alarm come with it.
+The order tests run against **PGlite** — actual Postgres compiled to WASM, with
+the same types, constraints and foreign keys, applying the generated migration
+rather than a hand-written copy. Mocking the database would only prove the mocks
+agree with themselves, and this is the code where a bug costs real money.
 
 ## Layout
 
 ```
 src/
-  core/
-    types.ts       NormalizedProduct, SourceAdapter — the contracts
-    registry.ts    adapter registration, chain ordering
-    search.ts      orchestrator: fan-out, fallback, timeouts, partial failure
-    normalize.ts   money, price parsing, cross-source dedupe
-    http.ts        fetch with retry, abort, credential redaction
-  adapters/
-    api/           cj-dropshipping, aliexpress-ds, printify
-    scrape/        bright-data client, ScrapeAdapter base, aliexpress fallback
-  scoring/score.ts factor-based ranking
-  cli.ts
+  engine/          sourcing + scoring (standalone, has its own CLI)
+    core/          adapter contracts, orchestrator, normalisation
+    adapters/      api/ and scrape/ per marketplace
+    scoring/       economics, ad-policy screening, ranking
+  app/
+    (store)/       storefront: catalogue, product, cart, order confirmation
+    admin/         overview, research, listings, orders
+    api/           cart, checkout, research, listings, fulfilment, stripe webhook
+  db/              Drizzle schema and lazy client
+  lib/             store config, money, cart, auth, orders, fulfilment
 ```
 
-## Tests
+The engine still runs standalone:
 
 ```bash
-npm test        # 33 tests
-npm run typecheck
+npm run search -- "dog hoodie" --verbose
 ```
 
-Coverage focuses on the parts that are easy to get subtly wrong: money
-arithmetic in minor units, cross-source dedupe, chain ordering, and every
-orchestrator branch (API succeeds, API throws, API returns empty, both fail,
-timeout, unconfigured, marketplace filter).
+## Deploying
 
-## Notes on data sources
-
-Marketplace terms of service vary on automated access, and several of these
-platforms offer official APIs precisely so you do not have to scrape them —
-which is why the engine reaches for those first. If you extend the scrape side,
-keep request volume modest and check the terms for the marketplace you are
-adding.
+Push to a Vercel project, set the environment variables from `.env.example`, and
+add the Stripe webhook endpoint. `npm run db:push` against the production
+`DATABASE_URL` creates the schema.
 
 ## Prior art
 
-The multi-source + AI-ranking approach was prompted by
+The multi-source sourcing idea came from
 [nadinev6/dropship](https://github.com/nadinev6/dropship), which wires Alibaba
-and AliExpress scraping through n8n + Bright Data + Gemini. This engine is an
+and AliExpress scraping through n8n + Bright Data + Gemini. This is an
 independent implementation — that repository carries no license, so none of its
 code is used here.

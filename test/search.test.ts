@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { AdapterRegistry } from '../src/core/registry.js';
-import { searchProducts } from '../src/core/search.js';
-import { money } from '../src/core/normalize.js';
+import { AdapterRegistry } from '../src/engine/core/registry.js';
+import { searchProducts } from '../src/engine/core/search.js';
+import { money } from '../src/engine/core/normalize.js';
 import type {
   AdapterContext,
   AdapterKind,
@@ -9,7 +9,7 @@ import type {
   NormalizedProduct,
   SearchQuery,
   SourceAdapter,
-} from '../src/core/types.js';
+} from '../src/engine/core/types.js';
 
 /** Configurable stand-in so we can drive the orchestrator's branches directly. */
 class FakeAdapter implements SourceAdapter {

@@ -5,8 +5,8 @@ import {
   money,
   parsePriceRange,
   toDecimal,
-} from '../src/core/normalize.js';
-import type { NormalizedProduct } from '../src/core/types.js';
+} from '../src/engine/core/normalize.js';
+import type { NormalizedProduct } from '../src/engine/core/types.js';
 
 describe('money', () => {
   it('stores minor units to keep arithmetic exact', () => {

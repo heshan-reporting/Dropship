@@ -36,8 +36,15 @@ function create(): Database {
     return drizzle(client, { schema });
   }
 
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('DATABASE_URL is not set. A production store needs a real Postgres URL.');
+  // Running a production build locally is a legitimate thing to want, so there
+  // is an escape hatch — but it has to be asked for by name. Falling back
+  // silently in production would mean a deployed store quietly serving from an
+  // ephemeral database, losing every order on the next cold start.
+  if (process.env.NODE_ENV === 'production' && process.env.USE_EMBEDDED_DB !== 'true') {
+    throw new Error(
+      'DATABASE_URL is not set. A production store needs a real Postgres URL. ' +
+        'To run a production build locally instead, set USE_EMBEDDED_DB=true.',
+    );
   }
 
   return createLocalDatabase();

@@ -19,7 +19,8 @@
     "search": "tsx --env-file-if-exists=.env src/engine/cli.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "seed": "tsx --env-file-if-exists=.env scripts/seed.ts"
+    "seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
+    "start:local": "USE_EMBEDDED_DB=true next start"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

@@ -84,6 +84,17 @@ export interface NormalizedProduct {
   supplier?: Supplier;
   signals: ProductSignals;
 
+  /** Shipping weight in grams, where the source reports it. Drives freight cost. */
+  weightGrams?: number;
+
+  /**
+   * How many distinct sources carried this same product, and how many listings
+   * in total. Stamped by `dedupe` — the duplicates it collapses are themselves
+   * the saturation signal, so they are counted rather than discarded.
+   */
+  sourceCount?: number;
+  listingCount?: number;
+
   /** ISO 8601. */
   fetchedAt: string;
   /**

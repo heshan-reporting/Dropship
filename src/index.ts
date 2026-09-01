@@ -25,9 +25,22 @@ export {
   scoreProduct,
   rankProducts,
   DEFAULT_SCORING,
+  computeEconomics,
+  DEFAULT_ECONOMICS,
+  retailForTargetMargin,
+  screenPolicy,
+  worstSeverity,
   type ProductScore,
   type ScoredProduct,
   type ScoringConfig,
+  type ScoreFactor,
+  type ScoreFlag,
+  type FlagSeverity,
+  type UnitEconomics,
+  type EconomicsConfig,
+  type AdCostModel,
+  type PolicyMatch,
+  type PolicySeverity,
 } from './scoring/score.js';
 export { money, minor, formatMoney, toDecimal, parsePriceRange, dedupe } from './core/normalize.js';
 export { loadConfig, type EngineConfig } from './config.js';

@@ -97,25 +97,64 @@ result.sourcesSkipped;  // which lacked credentials
 
 ## Scoring
 
-`scoreProduct` weighs five factors and returns a 0–100 total **with its
-reasoning attached**:
+The engine scores one question: **would selling this make money?**
+
+The obvious approach — cheap product, high rating, lots of sales — reliably ranks
+money-losers first. A $4.20 dog bowl at a 3x markup yields about $4 of gross
+margin and costs roughly $13 to advertise. It looks like a winner on every
+surface metric and loses $8 an order.
+
+So unit economics carry the most weight, and things that make a product
+unsellable act as vetoes rather than a few points off.
 
 | Factor | Weight | Judged on |
 |---|---|---|
-| Margin | 30% | Cost × target markup against an impulse-buy ceiling |
-| Demand | 25% | Units sold, log-scaled — early traction counts most |
-| Quality | 20% | Rating, with sub-3.5★ treated as disqualifying |
-| Shipping | 15% | Worst-case delivery days |
-| Supplier | 10% | Verified badge, years trading |
+| Economics | 35% | Contribution margin per order, after freight, fees, refunds and estimated CAC |
+| Demand | 20% | Units sold, log-scaled — early traction counts most |
+| Competition | 15% | How many distinct suppliers carry the same item |
+| Quality | 15% | Rating, shrunk toward a prior when review counts are thin |
+| Logistics | 10% | Delivery days and shipping weight |
+| Supplier | 5% | Verified badge, years trading |
 
-Two deliberate choices:
+### Blockers cap, they do not subtract
 
-- **Not an LLM call.** A number you can audit beats a model asserting "8/10"
-  with no way to check it. Factors an LLM genuinely judges better — creative
-  angle, market saturation, ad-policy risk — belong in a layer *on top* of this.
-- **Re-weighted across known factors.** A source that omits sales data is not
-  silently punished against one that reports it; the unjudged factors are listed
-  in `score.unknowns` instead.
+"Cannot be advertised on Meta" is not worth ten points off — it disqualifies the
+product. Blockers therefore impose a ceiling on the total, so a fat margin cannot
+hide one:
+
+```
+  25 (capped from 95)  Rechargeable Vape Pen Kit
+       $42.00 → $126.00 retail · CAC $39.72 → +$32.79/order
+       ✗ Cannot be advertised on Meta or TikTok (matched "vape")
+```
+
+Best margins in the set, ranked last. Current blockers: negative contribution,
+delivery beyond 21 days, and prohibited ad categories.
+
+### Where the numbers come from
+
+- **Unit economics** (`scoring/economics.ts`) — retail anchors on *product* cost,
+  then freight, payment fees, a refund allowance and estimated CAC are subtracted.
+  Retail deliberately does not track freight: the market prices a blanket on what
+  a blanket is worth, and marking up landed cost would hide the exact margin
+  problem heavy items cause. Unprofitable products report the retail price that
+  would fix them.
+- **CAC is a model, not a measurement.** `AdCostModel` defaults to industry rules
+  of thumb for cold paid social. Replace them with your real numbers the moment
+  you have campaign data — every score downstream depends on this.
+- **Competition falls out of the merge.** When `dedupe` finds the same item from
+  four suppliers, that is four competitors, and it is free data. Duplicates are
+  counted rather than discarded, and the survivor is priced at the cheapest
+  supplier found.
+- **Ratings are shrunk toward a prior.** 4.9★ from three reviews should not
+  outrank 4.6★ from twelve hundred; a Bayesian adjustment pulls thin counts back.
+- **Confidence is reported separately.** A 70 built on six known factors is a
+  different claim from a 70 built on two. `score.confidence` says which you have.
+
+Deliberately not an LLM call: every number above can be inspected, tuned, and
+argued with, costs nothing, and returns the same answer twice. Judgements a model
+genuinely makes better — creative angle, market saturation beyond supplier count,
+brand risk — belong in a layer on top of this, not in place of it.
 
 ## Adding a source
 

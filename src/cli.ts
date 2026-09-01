@@ -39,16 +39,38 @@ async function main(): Promise<void> {
 
   const ranked = rankProducts(result.products);
 
+  const ICON: Record<string, string> = { blocker: '\u2717', warning: '!', note: '\u00b7' };
+
   for (const [i, p] of ranked.entries()) {
-    const price = formatMoney(p.price) + (p.priceMax ? `–${formatMoney(p.priceMax)}` : '');
-    console.log(`${String(i + 1).padStart(2)}. [${String(p.score.total).padStart(3)}] ${p.title.slice(0, 68)}`);
-    console.log(`     ${price}  ·  ${p.marketplace}  ·  ${p.url}`);
-    if (verbose) {
-      for (const f of p.score.factors) {
-        console.log(`       ${f.name.padEnd(9)} ${(f.value * 100).toFixed(0).padStart(3)}%  ${f.note}`);
-      }
-      if (p.score.unknowns.length) console.log(`       unknown: ${p.score.unknowns.join(', ')}`);
+    const e = p.score.economics;
+    const capped = p.score.total < p.score.rawTotal ? ` (capped from ${p.score.rawTotal})` : '';
+
+    console.log(`${String(i + 1).padStart(2)}. [${String(p.score.total).padStart(3)}]${capped} ${p.title.slice(0, 62)}`);
+    console.log(
+      `     ${formatMoney(p.price)} cost \u2192 ${formatMoney(e.suggestedRetail)} retail  ` +
+        `\u00b7  ${e.viable ? '+' : ''}${formatMoney(e.contributionMargin)}/order  ` +
+        `\u00b7  ${p.marketplace}`,
+    );
+
+    for (const f of p.score.flags) {
+      console.log(`     ${ICON[f.severity]} ${f.message}`);
     }
+
+    if (verbose) {
+      console.log(`     ${p.url}`);
+      for (const f of p.score.factors) {
+        console.log(
+          `       ${f.name.padEnd(11)} ${(f.value * 100).toFixed(0).padStart(3)}%  ` +
+            `\u00d7${(f.weight * 100).toFixed(0).padStart(3)}%   ${f.note}`,
+        );
+      }
+      console.log(
+        `       break-even CAC ${formatMoney(e.breakEvenCac)}  \u00b7  ` +
+          `confidence ${(p.score.confidence * 100).toFixed(0)}%` +
+          (p.score.unknowns.length ? `  \u00b7  unknown: ${p.score.unknowns.join(', ')}` : ''),
+      );
+    }
+    console.log();
   }
 
   console.log(`\n${ranked.length} products in ${result.elapsedMs}ms`);

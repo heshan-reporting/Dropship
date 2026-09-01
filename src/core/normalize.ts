@@ -115,12 +115,18 @@ function titleKey(title: string): string {
 }
 
 /**
- * Remove duplicates across sources. Exact `id` matches go first; beyond that,
- * two products collapse when their normalised titles match and their prices sit
- * within 15% of each other — the same item relisted, not a genuine alternative.
+ * Collapse duplicate listings across sources.
  *
- * The survivor is the one from the richer source: an API result beats a scrape,
- * and among equals the one carrying more signals wins.
+ * The duplicates are not waste — they are the saturation signal. If the same
+ * item comes back from four suppliers, that is four people you are competing
+ * with on price, and it is the cheapest competition data available because it
+ * falls straight out of a merge you were doing anyway. Survivors therefore
+ * carry `sourceCount` and `listingCount` rather than the duplicates being
+ * silently dropped.
+ *
+ * Two products collapse when their normalised titles match and their prices sit
+ * within 15% of each other. The survivor is the richer record: an API result
+ * beats a scrape, and among equals the one carrying more signals wins.
  */
 export function dedupe(products: NormalizedProduct[]): NormalizedProduct[] {
   const byId = new Map<string, NormalizedProduct>();
@@ -129,36 +135,53 @@ export function dedupe(products: NormalizedProduct[]): NormalizedProduct[] {
     if (!existing || richness(p) > richness(existing)) byId.set(p.id, p);
   }
 
-  const kept: NormalizedProduct[] = [];
-  const seen = new Map<string, NormalizedProduct[]>();
+  interface Group {
+    winner: NormalizedProduct;
+    listings: number;
+    sources: Set<string>;
+    /** Cheapest unit cost seen for this product across every listing. */
+    lowestPrice: Money;
+  }
+
+  const groups: Group[] = [];
+  const byTitle = new Map<string, Group[]>();
 
   for (const p of byId.values()) {
     const key = titleKey(p.title);
-    if (!key) {
-      kept.push(p);
-      continue;
-    }
-    const bucket = seen.get(key);
-    if (!bucket) {
-      seen.set(key, [p]);
-      kept.push(p);
+    const candidates = key ? (byTitle.get(key) ?? []) : [];
+    const group = candidates.find((g) => priceWithin(g.winner, p, 0.15));
+
+    if (!group) {
+      const fresh: Group = {
+        winner: p,
+        listings: 1,
+        sources: new Set([p.source]),
+        lowestPrice: p.price,
+      };
+      groups.push(fresh);
+      if (key) byTitle.set(key, [...candidates, fresh]);
       continue;
     }
 
-    const twin = bucket.find((q) => priceWithin(q, p, 0.15));
-    if (!twin) {
-      bucket.push(p);
-      kept.push(p);
-      continue;
+    group.listings++;
+    group.sources.add(p.source);
+    if (
+      p.price.currency === group.lowestPrice.currency &&
+      p.price.amount < group.lowestPrice.amount
+    ) {
+      group.lowestPrice = p.price;
     }
-    // Same item from two sources — keep whichever tells us more.
-    if (richness(p) > richness(twin)) {
-      kept[kept.indexOf(twin)] = p;
-      bucket[bucket.indexOf(twin)] = p;
-    }
+    if (richness(p) > richness(group.winner)) group.winner = p;
   }
 
-  return kept;
+  return groups.map((g) => ({
+    ...g.winner,
+    listingCount: g.listings,
+    sourceCount: g.sources.size,
+    // Price against the cheapest supplier found, not whichever listing happened
+    // to win the richness contest.
+    price: g.lowestPrice,
+  }));
 }
 
 function priceWithin(a: NormalizedProduct, b: NormalizedProduct, tolerance: number): boolean {
